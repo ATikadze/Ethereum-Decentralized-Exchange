@@ -8,6 +8,7 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 contract LiquidityPool
 {
     uint256 constant tokensPerShare = 10; // Tokens per 1% share
+    uint256 constant swapFee = 3; // 0.3 (will later divide the result by 10)
     
     address immutable thisAddress;
     address immutable token1Address;
@@ -138,7 +139,7 @@ contract LiquidityPool
         
         (uint256 _tokenInBalance, uint256 _tokenOutBalance) = _getBalances(_tokenInAddress, _tokenOutAddress);
         
-        uint256 _availableTokenOutAmount = _getOutAmount(_tokenInBalance, _tokenOutBalance, _tokenInAmount);
+        uint256 _availableTokenOutAmount = _getOutAmount(_tokenInBalance, _tokenOutBalance, _tokenInAmount * swapFee / 10);
 
         require(_availableTokenOutAmount >= _tokenOutMinAmount);
 
