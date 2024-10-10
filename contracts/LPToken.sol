@@ -8,8 +8,12 @@ contract LPToken is ERC20, Ownable
 {
     constructor() ERC20("Liquidity Provider Token", "LPT") Ownable(msg.sender) {}
 
-    function mint(address account, uint256 value) public onlyOwner
+    function mint(address _account, uint256 _value) external onlyOwner
     {
-        _mint(account, value);
+        _mint(_account, _value);
+    }
+
+    function burn(address _account, uint256 _value) external onlyOwner {
+        _burn(_account, _value);
     }
 }

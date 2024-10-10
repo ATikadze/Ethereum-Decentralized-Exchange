@@ -27,10 +27,6 @@ contract Router
         return keccak256(abi.encodePacked(_tokenA, _tokenB));
     }
 
-    /* function depositETHToToken(address tokenAddress) external
-    {
-    } */
-
     function getLiquidityPoolAddress(address _token1Address, address _token2Address) external view returns (address)
     {
         return address(liquidityPools[_getLiquidityPoolIdentifier(_token1Address, _token2Address)]);
@@ -44,6 +40,13 @@ contract Router
             liquidityPools[liquidityPoolIdentifier] = new LiquidityPool(_token1Address, _token2Address);
 
         liquidityPools[liquidityPoolIdentifier].deposit(msg.sender, _token1Address, _token2Address, _token1Amount, _token2Amount);
+    }
+
+    function withdraw(address _token1Address, address _token2Address, uint256 _percentage) external liquidityPoolExists(_token1Address, _token2Address)
+    {
+        bytes32 liquidityPoolIdentifier = _getLiquidityPoolIdentifier(_token1Address, _token2Address);
+        
+        liquidityPools[liquidityPoolIdentifier].withdraw(msg.sender, _percentage);
     }
     
     function swap(address _tokenInAddress, address _tokenOutAddress, uint256 _tokenInAmount, uint256 _tokenOutMinAmount) external liquidityPoolExists(_tokenInAddress, _tokenOutAddress)

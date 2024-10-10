@@ -5,6 +5,7 @@ import "./LPToken.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 // TODO: Maybe add Ownable?
+// TODO: Add nonReentrant
 contract LiquidityPool
 {
     uint256 constant tokensPerShare = 10; // Tokens per 1% share
@@ -17,8 +18,6 @@ contract LiquidityPool
     LPToken immutable lpToken;
     IERC20 immutable token1;
     IERC20 immutable token2;
-
-    mapping(address => mapping(address => uint256)) tokenLiquidity;
 
     error TokenNotSupported(address tokenAddress);
     error NoAllowance(address tokenAddress);
@@ -80,8 +79,6 @@ contract LiquidityPool
 
         if (!token.transferFrom(_liquidityProvider, thisAddress, _tokenAmount))
             revert TransferFailed(_tokenAddress);
-
-        tokenLiquidity[_liquidityProvider][address(token)] += _tokenAmount;
     }
 
     function deposit(address _liquidityProvider, address _token1Address, address _token2Address, uint256 _token1Amount, uint256 _token2Amount) external validTokens(_token1Address, _token2Address)
@@ -91,9 +88,26 @@ contract LiquidityPool
         _deposit(_liquidityProvider, _token1Address, _token1Amount);
         _deposit(_liquidityProvider, _token2Address, _token2Amount);
         
-        uint256 _lpTokens = _token1Amount * 100 / token1.balanceOf(thisAddress);
+        uint256 _lpTokens = _token1Amount * 100 * tokensPerShare / _getToken(_token1Address).balanceOf(thisAddress);
 
         lpToken.mint(_liquidityProvider, _lpTokens);
+    }
+
+    // -- LP Withdrawal methods --
+
+    function withdraw(address _liquidityProvider, uint256 _percentage) external
+    {
+        require(_percentage > 0 && _percentage <= 100);
+        
+        uint256 _lpTokensToWithdraw = lpToken.balanceOf(_liquidityProvider) * _percentage / 100;
+        
+        // Multiplying by 1e18 for better precision
+        uint256 _lpTokensSharePercentage = _lpTokensToWithdraw * 1e18 / lpToken.totalSupply();
+
+        lpToken.burn(_liquidityProvider, _lpTokensToWithdraw);
+
+        token1.transfer(_liquidityProvider, token1.balanceOf(thisAddress) * _lpTokensSharePercentage / 1e18);
+        token2.transfer(_liquidityProvider, token2.balanceOf(thisAddress) * _lpTokensSharePercentage / 1e18);
     }
     
     // -- Swap methods --
