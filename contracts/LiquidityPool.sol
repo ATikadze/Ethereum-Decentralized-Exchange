@@ -23,6 +23,10 @@ contract LiquidityPool is Ownable, ReentrancyGuard
     error NoAllowance(address tokenAddress);
     error TransferFailed(address tokenAddress);
 
+    event Deposited(address liquidityProvider, uint256 token1Amount, uint256 token2Amount);
+    event Withdrawn(address liquidityProvider, uint256 percentage);
+    event Swapped(address account, address tokenInAddress, address tokenOutAddress, uint256 tokenInAmount, uint256 tokenOutAmount);
+
     modifier validTokens(address _token1Address, address _token2Address)
     {
         require(_tokensAreValid(_token1Address, _token2Address), "One or both tokens are not supported by this liquidity pool.");
@@ -71,7 +75,7 @@ contract LiquidityPool is Ownable, ReentrancyGuard
 
     // -- LP Deposit methods --
 
-    function _deposit(address _liquidityProvider, address _tokenAddress, uint256 _tokenAmount) private
+    function _deposit(address _liquidityProvider, address _tokenAddress, uint256 _tokenAmount) internal
     {
         IERC20 token = _getToken(_tokenAddress);
 
@@ -82,17 +86,19 @@ contract LiquidityPool is Ownable, ReentrancyGuard
             revert TransferFailed(_tokenAddress);
     }
 
-    function deposit(address _liquidityProvider, address _token1Address, address _token2Address, uint256 _token1Amount, uint256 _token2Amount) external onlyOwner validTokens(_token1Address, _token2Address) nonReentrant
+    function deposit(address _liquidityProvider, uint256 _token1Amount, uint256 _token2Amount) external onlyOwner nonReentrant
     {
         // TODO: Make sure order of the tokens is correct
         require(_tokensRatioValid(_token1Amount, _token2Amount), "Ratio of the deposited tokens must match.");
         
-        _deposit(_liquidityProvider, _token1Address, _token1Amount);
-        _deposit(_liquidityProvider, _token2Address, _token2Amount);
+        _deposit(_liquidityProvider, token1Address, _token1Amount);
+        _deposit(_liquidityProvider, token2Address, _token2Amount);
         
-        uint256 _lpTokens = _token1Amount * 100 * tokensPerShare / _getToken(_token1Address).balanceOf(thisAddress);
+        uint256 _lpTokens = _token1Amount * 100 * tokensPerShare / token1.balanceOf(thisAddress);
 
         lpToken.mint(_liquidityProvider, _lpTokens);
+
+        emit Deposited(_liquidityProvider, _token1Amount, _token2Amount);
     }
 
     // -- LP Withdrawal methods --
@@ -110,6 +116,8 @@ contract LiquidityPool is Ownable, ReentrancyGuard
 
         token1.transfer(_liquidityProvider, token1.balanceOf(thisAddress) * _lpTokensSharePercentage / 1e18);
         token2.transfer(_liquidityProvider, token2.balanceOf(thisAddress) * _lpTokensSharePercentage / 1e18);
+
+        emit Withdrawn(_liquidityProvider, _percentage);
     }
     
     // -- Swap methods --
@@ -153,13 +161,17 @@ contract LiquidityPool is Ownable, ReentrancyGuard
         require(_inToken.allowance(_account, thisAddress) >= _tokenInAmount);
         
         (uint256 _tokenInBalance, uint256 _tokenOutBalance) = _getBalances(_tokenInAddress, _tokenOutAddress);
+
+        uint256 _fee = (_tokenInAmount * swapFee / 1000);
         
-        uint256 _availableTokenOutAmount = _getOutAmount(_tokenInBalance, _tokenOutBalance, _tokenInAmount * swapFee / 10);
+        uint256 _availableTokenOutAmount = _getOutAmount(_tokenInBalance, _tokenOutBalance, _tokenInAmount - _fee);
 
         require(_availableTokenOutAmount >= _tokenOutMinAmount);
 
         require(_inToken.transferFrom(_account, thisAddress, _tokenInAmount));
 
         require(_getToken(_tokenOutAddress).transfer(_account, _availableTokenOutAmount));
+
+        emit Swapped(_account, _tokenInAddress, _tokenOutAddress, _tokenInAmount, _availableTokenOutAmount);
     }
 }

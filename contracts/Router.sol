@@ -36,9 +36,19 @@ contract Router is ReentrancyGuard
         require(msg.sender == wethAddress);
     }
     
-    function _getLiquidityPoolIdentifier(address _token1Address, address _token2Address) private pure returns (bytes32)
+    function _tokensOrdered(address _token1Address, address _token2Address) internal pure returns (bool)
     {
-        (address _tokenA, address _tokenB) = _token1Address < _token2Address ? (_token1Address, _token2Address) : (_token2Address, _token1Address);
+        return _token1Address < _token2Address ? true : false;
+    }
+    
+    function _getOrderedTokens(address _token1Address, address _token2Address) internal pure returns (address _tokenA, address _tokenB)
+    {
+        (_tokenA, _tokenB) = _tokensOrdered(_token1Address, _token2Address) ? (_token1Address, _token2Address) : (_token2Address, _token1Address);
+    }
+    
+    function _getLiquidityPoolIdentifier(address _token1Address, address _token2Address) internal pure returns (bytes32)
+    {
+        (address _tokenA, address _tokenB) = _getOrderedTokens(_token1Address, _token2Address);
         
         return keccak256(abi.encodePacked(_tokenA, _tokenB));
     }
@@ -69,25 +79,30 @@ contract Router is ReentrancyGuard
     
     function deposit(address _token1Address, address _token2Address, uint256 _token1Amount, uint256 _token2Amount) external
     {
-        bytes32 liquidityPoolIdentifier = _getLiquidityPoolIdentifier(_token1Address, _token2Address);
+        bytes32 _liquidityPoolIdentifier = _getLiquidityPoolIdentifier(_token1Address, _token2Address);
 
-        if (address(liquidityPools[liquidityPoolIdentifier]) == address(0))
-            liquidityPools[liquidityPoolIdentifier] = new LiquidityPool(_token1Address, _token2Address);
+        if (address(liquidityPools[_liquidityPoolIdentifier]) == address(0))
+        {
+            (address _tokenA, address _tokenB) = _getOrderedTokens(_token1Address, _token2Address);
+            liquidityPools[_liquidityPoolIdentifier] = new LiquidityPool(_tokenA, _tokenB);
+        }
 
-        liquidityPools[liquidityPoolIdentifier].deposit(msg.sender, _token1Address, _token2Address, _token1Amount, _token2Amount);
+        (uint256 _tokenAAmount, uint256 _tokenBAmount) = _tokensOrdered(_token1Address, _token2Address) ? (_token1Amount, _token2Amount) : (_token2Amount, _token1Amount);
+
+        liquidityPools[_liquidityPoolIdentifier].deposit(msg.sender, _tokenAAmount, _tokenBAmount);
     }
 
     function withdraw(address _token1Address, address _token2Address, uint256 _percentage) external liquidityPoolExists(_token1Address, _token2Address)
     {
-        bytes32 liquidityPoolIdentifier = _getLiquidityPoolIdentifier(_token1Address, _token2Address);
+        bytes32 _liquidityPoolIdentifier = _getLiquidityPoolIdentifier(_token1Address, _token2Address);
         
-        liquidityPools[liquidityPoolIdentifier].withdraw(msg.sender, _percentage);
+        liquidityPools[_liquidityPoolIdentifier].withdraw(msg.sender, _percentage);
     }
     
     function swap(address _tokenInAddress, address _tokenOutAddress, uint256 _tokenInAmount, uint256 _tokenOutMinAmount) external liquidityPoolExists(_tokenInAddress, _tokenOutAddress)
     {
-        bytes32 liquidityPoolIdentifier = _getLiquidityPoolIdentifier(_tokenInAddress, _tokenOutAddress);
+        bytes32 _liquidityPoolIdentifier = _getLiquidityPoolIdentifier(_tokenInAddress, _tokenOutAddress);
         
-        liquidityPools[liquidityPoolIdentifier].swap(msg.sender, _tokenInAddress, _tokenOutAddress, _tokenInAmount, _tokenOutMinAmount);
+        liquidityPools[_liquidityPoolIdentifier].swap(msg.sender, _tokenInAddress, _tokenOutAddress, _tokenInAmount, _tokenOutMinAmount);
     }
 }
