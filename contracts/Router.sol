@@ -2,10 +2,14 @@
 pragma solidity ^0.8.0;
 
 import "./LiquidityPool.sol";
+import "./Interfaces/ICustomWETH.sol";
 
-// TODO: Add ETH wrap/unwrap
 contract Router
 {
+    address immutable wethAddress;
+    
+    ICustomWETH immutable wethContract;
+    
     mapping(bytes32 => LiquidityPool) liquidityPools;
 
     error NoLiquidityPoolFound(address token1, address token2);
@@ -19,6 +23,17 @@ contract Router
 
         _;
     }
+
+    constructor(address _wethAddress)
+    {
+        wethAddress = _wethAddress;
+        wethContract = ICustomWETH(_wethAddress);
+    }
+
+    receive() external payable
+    {
+        require(msg.sender == wethAddress);
+    }
     
     function _getLiquidityPoolIdentifier(address _token1Address, address _token2Address) private pure returns (bytes32)
     {
@@ -30,6 +45,25 @@ contract Router
     function getLiquidityPoolAddress(address _token1Address, address _token2Address) external view returns (address)
     {
         return address(liquidityPools[_getLiquidityPoolIdentifier(_token1Address, _token2Address)]);
+    }
+    
+    function wrapEther() external payable
+    {
+        require(msg.value > 0);
+
+        wethContract.deposit{value: msg.value}();
+        wethContract.transfer(msg.sender, msg.value);
+    }
+
+    function unwrapEther(uint256 _amount) external
+    {
+        require(_amount > 0);
+        require(wethContract.transferFrom(msg.sender, address(this), _amount));
+        
+        wethContract.withdraw(_amount);
+        (bool _success, ) = msg.sender.call{value: _amount}("");
+
+        require(_success);
     }
     
     function deposit(address _token1Address, address _token2Address, uint256 _token1Amount, uint256 _token2Amount) external

@@ -83,6 +83,7 @@ contract LiquidityPool is ReentrancyGuard
 
     function deposit(address _liquidityProvider, address _token1Address, address _token2Address, uint256 _token1Amount, uint256 _token2Amount) external validTokens(_token1Address, _token2Address) nonReentrant
     {
+        // TODO: Make sure order of the tokens is correct
         require(_tokensRatioValid(_token1Amount, _token2Amount), "Ratio of the deposited tokens must match.");
         
         _deposit(_liquidityProvider, _token1Address, _token1Amount);
