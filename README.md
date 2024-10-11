@@ -1,13 +1,15 @@
 # Ethereum Decentralized Exchange (DEX)
 
-This project demonstrates a basic Hardhat use case. It comes with a sample contract, a test for that contract, and a Hardhat Ignition module that deploys that contract.
+#### Architecture:
+![Architecture Diagram](https://github.com/ATikadze/Ethereum-Decentralized-Exchange--DEX-/blob/06a0639044b5a979f21c94ebb973379f7529403a/assets/Architecture.png)
 
-Try running some of the following tasks:
+
+#### Testing:
+For testing, try running some of the following tasks:
 
 ```shell
 npx hardhat help
 npx hardhat test
 REPORT_GAS=true npx hardhat test
 npx hardhat node
-npx hardhat ignition deploy ./ignition/modules/Lock.js
 ```
