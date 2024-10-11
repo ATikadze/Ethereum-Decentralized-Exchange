@@ -3,8 +3,9 @@ pragma solidity ^0.8.0;
 
 import "./LiquidityPool.sol";
 import "./Interfaces/ICustomWETH.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-contract Router
+contract Router is ReentrancyGuard
 {
     address immutable wethAddress;
     
@@ -47,7 +48,7 @@ contract Router
         return address(liquidityPools[_getLiquidityPoolIdentifier(_token1Address, _token2Address)]);
     }
     
-    function wrapEther() external payable
+    function wrapEther() external payable nonReentrant
     {
         require(msg.value > 0);
 
@@ -55,7 +56,7 @@ contract Router
         wethContract.transfer(msg.sender, msg.value);
     }
 
-    function unwrapEther(uint256 _amount) external
+    function unwrapEther(uint256 _amount) external nonReentrant
     {
         require(_amount > 0);
         require(wethContract.transferFrom(msg.sender, address(this), _amount));

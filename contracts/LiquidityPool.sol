@@ -3,10 +3,10 @@ pragma solidity ^0.8.0;
 
 import "./LPToken.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-// TODO: Maybe add Ownable?
-contract LiquidityPool is ReentrancyGuard
+contract LiquidityPool is Ownable, ReentrancyGuard
 {
     uint256 constant tokensPerShare = 10; // Tokens per 1% share
     uint256 constant swapFee = 3; // 0.3 (will later divide the result by 10)
@@ -30,6 +30,7 @@ contract LiquidityPool is ReentrancyGuard
     }
     
     constructor(address _token1Address, address _token2Address)
+    Ownable(msg.sender)
     {
         thisAddress = address(this);
         token1Address = _token1Address;
@@ -81,7 +82,7 @@ contract LiquidityPool is ReentrancyGuard
             revert TransferFailed(_tokenAddress);
     }
 
-    function deposit(address _liquidityProvider, address _token1Address, address _token2Address, uint256 _token1Amount, uint256 _token2Amount) external validTokens(_token1Address, _token2Address) nonReentrant
+    function deposit(address _liquidityProvider, address _token1Address, address _token2Address, uint256 _token1Amount, uint256 _token2Amount) external onlyOwner validTokens(_token1Address, _token2Address) nonReentrant
     {
         // TODO: Make sure order of the tokens is correct
         require(_tokensRatioValid(_token1Amount, _token2Amount), "Ratio of the deposited tokens must match.");
@@ -96,7 +97,7 @@ contract LiquidityPool is ReentrancyGuard
 
     // -- LP Withdrawal methods --
 
-    function withdraw(address _liquidityProvider, uint256 _percentage) external nonReentrant
+    function withdraw(address _liquidityProvider, uint256 _percentage) external onlyOwner nonReentrant
     {
         require(_percentage > 0 && _percentage <= 100);
         
@@ -145,7 +146,7 @@ contract LiquidityPool is ReentrancyGuard
         return _getInAmount(_tokenInBalance, _tokenOutBalance, _tokenOutAmount);
     }
     
-    function swap(address _account, address _tokenInAddress, address _tokenOutAddress, uint256 _tokenInAmount, uint256 _tokenOutMinAmount) external validTokens(_tokenInAddress, _tokenOutAddress) nonReentrant
+    function swap(address _account, address _tokenInAddress, address _tokenOutAddress, uint256 _tokenInAmount, uint256 _tokenOutMinAmount) external onlyOwner validTokens(_tokenInAddress, _tokenOutAddress) nonReentrant
     {
         IERC20 _inToken = _getToken(_tokenInAddress);
 
