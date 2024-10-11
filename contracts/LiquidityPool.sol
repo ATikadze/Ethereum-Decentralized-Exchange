@@ -2,11 +2,13 @@
 pragma solidity ^0.8.0;
 
 import "./LPToken.sol";
+import "./Interfaces/IETHErrors.sol";
+import "./Interfaces/ITokenErrors.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-contract LiquidityPool is Ownable, ReentrancyGuard
+contract LiquidityPool is Ownable, ReentrancyGuard, IETHErrors, ITokenErrors
 {
     uint256 constant tokensPerShare = 10; // Tokens per 1% share
     uint256 constant swapFee = 3; // 0.3 (will later divide the result by 10)
@@ -19,9 +21,10 @@ contract LiquidityPool is Ownable, ReentrancyGuard
     IERC20 immutable token1;
     IERC20 immutable token2;
 
+    error TokensNotSupported();
     error TokenNotSupported(address tokenAddress);
-    error NoAllowance(address tokenAddress);
-    error TransferFailed(address tokenAddress);
+    error InvalidTokensRatio();
+    error SwapFailedMinOutAmount(uint256 tokenOutMinAmount, uint256 availableTokenOutAmount);
 
     event Deposited(address liquidityProvider, uint256 token1Amount, uint256 token2Amount);
     event Withdrawn(address liquidityProvider, uint256 percentage);
@@ -29,7 +32,9 @@ contract LiquidityPool is Ownable, ReentrancyGuard
 
     modifier validTokens(address _token1Address, address _token2Address)
     {
-        require(_tokensAreValid(_token1Address, _token2Address), "One or both tokens are not supported by this liquidity pool.");
+        if (!_tokensAreValid(_token1Address, _token2Address))
+            revert TokensNotSupported();
+            
         _;
     }
     
@@ -78,18 +83,20 @@ contract LiquidityPool is Ownable, ReentrancyGuard
     function _deposit(address _liquidityProvider, address _tokenAddress, uint256 _tokenAmount) internal
     {
         IERC20 token = _getToken(_tokenAddress);
+        
+        uint256 _availableTokenAllowance = token.allowance(_liquidityProvider, thisAddress);
 
-        if (token.allowance(_liquidityProvider, thisAddress) < _tokenAmount)
-            revert NoAllowance(_tokenAddress);
+        if (_availableTokenAllowance < _tokenAmount)
+            revert NotEnoughTokenAllowance(_liquidityProvider, thisAddress, _tokenAmount, _availableTokenAllowance, _tokenAddress);
 
         if (!token.transferFrom(_liquidityProvider, thisAddress, _tokenAmount))
-            revert TransferFailed(_tokenAddress);
+            revert TokenTransferFailed(_liquidityProvider, thisAddress, _tokenAmount, _tokenAddress);
     }
 
     function deposit(address _liquidityProvider, uint256 _token1Amount, uint256 _token2Amount) external onlyOwner nonReentrant
     {
-        // TODO: Make sure order of the tokens is correct
-        require(_tokensRatioValid(_token1Amount, _token2Amount), "Ratio of the deposited tokens must match.");
+        if (!_tokensRatioValid(_token1Amount, _token2Amount))
+            revert InvalidTokensRatio();
         
         _deposit(_liquidityProvider, token1Address, _token1Amount);
         _deposit(_liquidityProvider, token2Address, _token2Amount);
@@ -105,7 +112,7 @@ contract LiquidityPool is Ownable, ReentrancyGuard
 
     function withdraw(address _liquidityProvider, uint256 _percentage) external onlyOwner nonReentrant
     {
-        require(_percentage > 0 && _percentage <= 100);
+        require(_percentage > 0 && _percentage <= 100, "Percentage must be within 0 and 100 range.");
         
         uint256 _lpTokensToWithdraw = lpToken.balanceOf(_liquidityProvider) * _percentage / 100;
         
@@ -134,8 +141,6 @@ contract LiquidityPool is Ownable, ReentrancyGuard
     {
         uint256 k = _tokenInBalance * _tokenOutBalance;
 
-        require(_tokenOutBalance > _tokenOutAmount);
-
         return (k / (_tokenOutBalance - _tokenOutAmount)) - _tokenInBalance;
         // Example: (10 000 / (10 - 2)) - 1000 = 250
     }
@@ -151,14 +156,20 @@ contract LiquidityPool is Ownable, ReentrancyGuard
     {
         (uint256 _tokenInBalance, uint256 _tokenOutBalance) = _getBalances(_tokenInAddress, _tokenOutAddress);
 
+        if (_tokenOutBalance < _tokenOutAmount)
+            revert InsufficientTokenBalance(_tokenOutAmount, _tokenOutBalance, _tokenOutAddress);
+
         return _getInAmount(_tokenInBalance, _tokenOutBalance, _tokenOutAmount);
     }
     
     function swap(address _account, address _tokenInAddress, address _tokenOutAddress, uint256 _tokenInAmount, uint256 _tokenOutMinAmount) external onlyOwner validTokens(_tokenInAddress, _tokenOutAddress) nonReentrant
     {
         IERC20 _inToken = _getToken(_tokenInAddress);
+        
+        uint256 _availableTokenInAllowance = _inToken.allowance(_account, thisAddress);
 
-        require(_inToken.allowance(_account, thisAddress) >= _tokenInAmount);
+        if (_availableTokenInAllowance < _tokenInAmount)
+            revert NotEnoughTokenAllowance(_account, thisAddress, _tokenInAmount, _availableTokenInAllowance, _tokenInAddress);
         
         (uint256 _tokenInBalance, uint256 _tokenOutBalance) = _getBalances(_tokenInAddress, _tokenOutAddress);
 
@@ -166,11 +177,14 @@ contract LiquidityPool is Ownable, ReentrancyGuard
         
         uint256 _availableTokenOutAmount = _getOutAmount(_tokenInBalance, _tokenOutBalance, _tokenInAmount - _fee);
 
-        require(_availableTokenOutAmount >= _tokenOutMinAmount);
+        if (_availableTokenOutAmount < _tokenOutMinAmount)
+            revert SwapFailedMinOutAmount(_tokenOutMinAmount, _availableTokenOutAmount);
 
-        require(_inToken.transferFrom(_account, thisAddress, _tokenInAmount));
+        if (!_inToken.transferFrom(_account, thisAddress, _tokenInAmount))
+            revert TokenTransferFailed(_account, thisAddress, _tokenInAmount, _tokenInAddress);
 
-        require(_getToken(_tokenOutAddress).transfer(_account, _availableTokenOutAmount));
+        if (!_getToken(_tokenOutAddress).transfer(_account, _availableTokenOutAmount))
+            revert TokenTransferFailed(thisAddress, _account, _availableTokenOutAmount, _tokenOutAddress);
 
         emit Swapped(_account, _tokenInAddress, _tokenOutAddress, _tokenInAmount, _availableTokenOutAmount);
     }

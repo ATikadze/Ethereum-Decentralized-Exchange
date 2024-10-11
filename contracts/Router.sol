@@ -3,9 +3,11 @@ pragma solidity ^0.8.0;
 
 import "./LiquidityPool.sol";
 import "./Interfaces/ICustomWETH.sol";
+import "./Interfaces/IETHErrors.sol";
+import "./Interfaces/ITokenErrors.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-contract Router is ReentrancyGuard
+contract Router is ReentrancyGuard, IETHErrors, ITokenErrors
 {
     address immutable wethAddress;
     
@@ -33,7 +35,7 @@ contract Router is ReentrancyGuard
 
     receive() external payable
     {
-        require(msg.sender == wethAddress);
+        require(msg.sender == wethAddress, "Only accepting Ether from WETH contract.");
     }
     
     function _tokensOrdered(address _token1Address, address _token2Address) internal pure returns (bool)
@@ -60,21 +62,26 @@ contract Router is ReentrancyGuard
     
     function wrapEther() external payable nonReentrant
     {
-        require(msg.value > 0);
+        if (msg.value == 0)
+            revert InsufficientEtherSent(msg.value, 0);
 
         wethContract.deposit{value: msg.value}();
         wethContract.transfer(msg.sender, msg.value);
     }
 
-    function unwrapEther(uint256 _amount) external nonReentrant
+    function unwrapEther(uint256 _wethAmount) external nonReentrant
     {
-        require(_amount > 0);
-        require(wethContract.transferFrom(msg.sender, address(this), _amount));
-        
-        wethContract.withdraw(_amount);
-        (bool _success, ) = msg.sender.call{value: _amount}("");
+        if (_wethAmount == 0)
+            revert InsufficientTokenSent(_wethAmount, 0, wethAddress);
 
-        require(_success);
+        if (!wethContract.transferFrom(msg.sender, address(this), _wethAmount))
+            revert TokenTransferFailed(msg.sender, address(this), _wethAmount, wethAddress);
+        
+        wethContract.withdraw(_wethAmount);
+        (bool _success, ) = msg.sender.call{value: _wethAmount}("");
+
+        if (!_success)
+            revert ETHTransferFailed(msg.sender, _wethAmount);
     }
     
     function deposit(address _token1Address, address _token2Address, uint256 _token1Amount, uint256 _token2Amount) external
